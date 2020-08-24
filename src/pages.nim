@@ -2,10 +2,14 @@ import uri
 
 type
   NodeStatus* = enum
-    nsNone, nsEnqueued, nsSuccess, nsFailure
+    nsNone
+    nsEnqueued
+    nsSuccess
+    nsFailure
 
   NodeRequest* = enum
-    nrGet, nrHead
+    nrGet
+    nrHead
 
   Page* = object
     uri*: Uri
