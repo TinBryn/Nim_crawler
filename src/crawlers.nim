@@ -32,8 +32,9 @@ proc newCrawler*(maxThreads: int): Crawler =
   )
   initLock(result.lock)
 
-proc getNodeSync(crawler: Crawler, uri: Uri): Page =
-  ##
+proc getNodeSync(crawler: var Crawler, uri: Uri): Page =
+  withLock(crawler.lock):
+    result = crawler.graph[uri]
 
 proc crawlWithGet(crawler: var Crawler, uri: Uri) =
   ##
