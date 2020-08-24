@@ -23,4 +23,10 @@ proc request*(url: string, met: NodeRequest): CurlResult =
     CurlResult(code: code, body: "")
 
 when isMainModule:
-  echo request("http://www.google.com", nrGet)
+  when defined ssl:
+    const url = "https://www.google.com"
+  else:
+    const url = "http://www.google.com"
+
+  echo url
+  echo request(url, nrHead)
