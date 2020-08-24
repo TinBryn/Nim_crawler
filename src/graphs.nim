@@ -13,7 +13,7 @@ proc newGraph*(): PageGraph =
     outgoing: initTable[Uri, HashSet[Uri]](),
     incomming: initTable[Uri, HashSet[Uri]]())
 
-proc hasKeyOrPut*(graph: var PageGraph, node: Uri): bool = ##
+proc hasKeyOrPut*(graph: var PageGraph, node: Uri): bool =
   result = graph.nodes.hasKeyOrPut(node, newPage(node))
   if not result:
     graph.outgoing[node] = initHashSet[Uri]()
@@ -22,12 +22,12 @@ proc hasKeyOrPut*(graph: var PageGraph, node: Uri): bool = ##
 proc hasKey*(graph: PageGraph, node: Uri): bool =
   graph.nodes.hasKey(node)
 
-proc `[]`*(graph: PageGraph, uri: Uri): Page = ##
+proc `[]`*(graph: PageGraph, uri: Uri): Page =
   graph.nodes[uri]
 
-proc `[]`*(graph: var PageGraph, uri: Uri): var Page = ##
+proc `[]`*(graph: var PageGraph, uri: Uri): var Page =
   graph.nodes[uri]
 
-proc addNeighbor*(graph: var PageGraph; start, finish: Uri) = ##
+proc addNeighbor*(graph: var PageGraph; start, finish: Uri) =
   graph.outgoing[start].incl(finish)
   graph.incomming[finish].incl(start)
