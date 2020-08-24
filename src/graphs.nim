@@ -17,6 +17,9 @@ proc newGraph*(): PageGraph =
     outgoing: initTable[Uri, HashSet[Uri]](),
     incomming: initTable[Uri, HashSet[Uri]]())
 
+proc len*(graph: PageGraph): Natural =
+  graph.nodes.len
+
 proc addNode*(graph: var PageGraph, uri: Uri): bool =
   result = uri notin graph.nodes
   if result:
