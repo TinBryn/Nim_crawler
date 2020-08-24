@@ -11,13 +11,13 @@ type
     nrGet
     nrHead
 
-  Page* = object
+  Page* = ref object
     uri*: Uri
     request*: NodeRequest
     status*: NodeStatus
     error*: string
     response*: int
 
-proc newPage*(uri: Uri): Page =
+proc newPage*(uri: Uri, status = nsNone): Page =
   ##
-  Page(uri: uri, status: nsNone)
+  Page(uri: uri, status: status)

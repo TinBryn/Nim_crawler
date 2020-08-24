@@ -1,4 +1,8 @@
-import tables, sets, uri, pages, hashes
+import tables
+import sets
+import uri
+import pages
+import hashes
 
 proc hash*(uri: Uri): Hash = hash $uri
 
@@ -13,20 +17,20 @@ proc newGraph*(): PageGraph =
     outgoing: initTable[Uri, HashSet[Uri]](),
     incomming: initTable[Uri, HashSet[Uri]]())
 
-proc hasKeyOrPut*(graph: var PageGraph, node: Uri): bool =
-  result = graph.nodes.hasKeyOrPut(node, newPage(node))
-  if not result:
-    graph.outgoing[node] = initHashSet[Uri]()
-    graph.incomming[node] = initHashSet[Uri]()
-
-proc hasKey*(graph: PageGraph, node: Uri): bool =
-  graph.nodes.hasKey(node)
+proc addNode*(graph: var PageGraph, uri: Uri): bool =
+  result = uri notin graph.nodes
+  if result:
+    graph.nodes[uri] = newPage(uri, nsEnqueued)
 
 proc `[]`*(graph: PageGraph, uri: Uri): Page =
   graph.nodes[uri]
 
 proc `[]`*(graph: var PageGraph, uri: Uri): var Page =
   graph.nodes[uri]
+
+iterator parents*(graph: PageGraph, uri: Uri): Uri =
+  for parent in graph.incomming[uri]:
+    yield parent
 
 proc addNeighbor*(graph: var PageGraph; start, finish: Uri) =
   graph.outgoing[start].incl(finish)
