@@ -14,51 +14,41 @@ import htmlhelper
 proc hash*(uri: Uri): Hash = hash($uri)
 
 type Crawler* = object
-  numThreads {.guard:lock.}, maxThreads: int
   verbosity*: bool
-
   domain: Uri
   lock: Lock
-  queue {.guard:lock.}: Deque[Uri]
-  current {.guard:lock.}: HashSet[Uri]
-  errors {.guard:lock.}: seq[string]
-  graph {.guard:lock.}: PageGraph
+  queue{.guard:lock.}: Deque[Uri]
+  current{.guard:lock.}: HashSet[Uri]
+  errors{.guard:lock.}: seq[string]
+  graph{.guard:lock.}: PageGraph
 
-proc newCrawler*(maxThreads: int): Crawler =
+proc newCrawler*(maxThreads: int, verbosity = false): Crawler =
   result = Crawler(
-    numThreads: 0,
-    maxThreads: maxThreads,
-    verbosity: false,
+    verbosity: verbosity,
     queue: initDeque[Uri](),
     current: initHashSet[Uri](),
     graph: newGraph()
   )
-  initLock(result.lock)
 
-proc getNodeSync(crawler: var Crawler, uri: Uri): Page =
-  withLock(crawler.lock):
-    result = crawler.graph[uri]
+proc getNode(crawler: var Crawler, uri: Uri): Page = {.locks:[crawler.lock].}:
+  result = crawler.graph[uri]
 
-proc noteError(crawler: var Crawler, err: string) =
-  withLock(crawler.lock):
-    crawler.errors.add(err)
+proc noteError(crawler: var Crawler, err: string) = {.locks:[crawler.lock].}:
+  crawler.errors.add(err)
 
 proc enqueue*(crawler: var Crawler, uri: Uri)
 proc spawnCrawlingThread(crawler: var Crawler, uri: Uri)
 
-proc finalizeCrawl(crawler: var Crawler, uri: Uri) =
+proc finalizeCrawl(crawler: var Crawler, uri: Uri) = {.locks:[crawler.lock].}:
   echo &"finalizing {uri}"
-  withLock(crawler.lock):
-    crawler.current.excl(uri)
-    if crawler.queue.len == 0:
-      dec crawler.numThreads
-    else:
-      let queueUri = crawler.queue.popFirst()
-      crawler.spawnCrawlingThread(queueUri)
+  crawler.current.excl(uri)
+  if crawler.queue.len > 0:
+    let queueUri = crawler.queue.popFirst()
+    crawler.spawnCrawlingThread(queueUri)
 
-proc crawlWithGet(crawler: var Crawler, uri: Uri) =
+proc crawlWithGet(crawler: var Crawler, uri: Uri) = {.locks:[crawler.lock].}:
   ##
-  let node = crawler.getNodeSync(uri)
+  let node = crawler.getNode(uri)
   node[].request = nrGet
 
   let response = request($uri, nrGet)
@@ -66,25 +56,23 @@ proc crawlWithGet(crawler: var Crawler, uri: Uri) =
 
   if response.code >= 400 or response.code == 0:
     var parent: Uri
-    withLock(crawler.lock):
-      for uri in crawler.graph.parents(uri):
-        parent = uri
-        break
+    for uri in crawler.graph.parents(uri):
+      parent = uri
+      break
     
     let msg = &"When crawling {uri}, got a {response.code} (linked from {parent})"
     crawler.noteError(msg)
     node[].status = nsFailure
   else:
     let (neighbors, errors) = getNeighbors(response.body, uri)
-    withLock(crawler.lock):
-      for neighbor in neighbors:
-        crawler.graph.addNeighbor(uri, neighbor)
-        crawler.enqueue(neighbor)
+    for neighbor in neighbors:
+      crawler.graph.addNeighbor(uri, neighbor)
+      crawler.enqueue(neighbor)
     node[].status = nsSuccess
   crawler.finalizeCrawl(uri)
 
-proc crawlWithHead(crawler: var Crawler, uri: Uri) =
-  let node = crawler.getNodeSync(uri)
+proc crawlWithHead(crawler: var Crawler, uri: Uri) = {.locks:[crawler.lock].}:
+  let node = crawler.getNode(uri)
   node[].request = nrHead
 
   let response = request($uri, nrHead)
@@ -92,10 +80,9 @@ proc crawlWithHead(crawler: var Crawler, uri: Uri) =
 
   if response.code >= 400 or response.code == 0:
     var parent: Uri
-    withLock(crawler.lock):
-      for uri in crawler.graph.parents(uri):
-        parent = uri
-        break
+    for uri in crawler.graph.parents(uri):
+      parent = uri
+      break
     
     let msg = &"When crawling {uri}, got a {response.code} (linked from {parent})"
     crawler.noteError(msg)
@@ -111,29 +98,21 @@ proc uriShouldBeCrawledAsNode(crawler: Crawler, uri: Uri): bool =
   ##
 
 proc spawnCrawlingThread(crawler: var Crawler, uri: Uri) =
-  ##
-  {.locks:[crawler.lock].}:
-    crawler.current.incl(uri)
-    sleep 100
-    if uriShouldBeCrawledAsNode(crawler, uri):
-      spawn crawlWithGet(crawler, uri)
-    else:
-      spawn crawlWithHead(crawler, uri)
+  sleep 100 # milliseconds
+  if uriShouldBeCrawledAsNode(crawler, uri):
+    spawn crawlWithGet(crawler, uri)
+  else:
+    spawn crawlWithHead(crawler, uri)
 
-proc enqueue(crawler: var Crawler, uri: Uri) =
-  {.locks:[crawler.lock].}:
-    ##
-    if not crawler.graph.addNode(uri):
-      return
+proc enqueue(crawler: var Crawler, uri: Uri) = {.locks:[crawler.lock].}:
+  if not crawler.graph.addNode(uri):
+    return
 
-    echo "Enqueueing {uri} (queueu has size {crawler.queue.len})"
-    if crawler.numThreads < crawler.maxThreads:
-      inc crawler.numThreads
-      crawler.spawnCrawlingThread(uri)
-    else:
-      crawler.queue.addLast(uri)
+  echo "Enqueueing {uri} (queueu has size {crawler.queue.len})"
 
-proc crawl*(crawler: var Crawler, initialUrl: string, displayResults = true): PageGraph =
+  crawler.queue.addLast(uri)
+
+proc crawl*(crawler: var Crawler, initialUrl: string, displayResults = true): PageGraph = {.locks:[crawler.lock].}:
   ##
   let initial = parseUri(initialUrl)
 
@@ -142,32 +121,27 @@ proc crawl*(crawler: var Crawler, initialUrl: string, displayResults = true): Pa
   crawler.domain.query = ""
   crawler.domain.anchor = ""
 
-  withLock(crawler.lock):
-    crawler.enqueue(initial)
+  crawler.enqueue(initial)
 
   while true:
-    var queueSize: int
-    var beingExplored: int
-    withLock(crawler.lock):
-      queueSize = crawler.queue.len
-      beingExplored = crawler.current.len
+    let queueSize = crawler.queue.len
+    let beingExplored = crawler.current.len
 
     if queueSize == 0 and beingExplored == 0:
       break
     if crawler.verbosity:
       echo &"Crawling, queue has length {queueSize}, currently exploring {beingExplored} nodes"
 
-    sleep 1000 # microseconds
+    sleep 1_000 # milliseconds
 
-  {.locks:[crawler.lock].}:
-    if displayResults:
-      echo &"\n\nDone crawling! We explored {crawler.graph.len} urls!\n"
+  if displayResults:
+    echo &"\n\nDone crawling! We explored {crawler.graph.len} urls!\n"
 
-      if crawler.errors.len == 0:
-        echo "No errors found!\n"
-      else:
-        echo "Here are all the complaints found:\n"
-        for error in crawler.errors:
-          echo error
-        echo ""
-    crawler.graph
+    if crawler.errors.len == 0:
+      echo "No errors found!\n"
+    else:
+      echo "Here are all the complaints found:\n"
+      for error in crawler.errors:
+        echo error
+      echo ""
+  crawler.graph
