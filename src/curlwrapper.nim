@@ -2,25 +2,19 @@ import httpclient
 import parseutils
 import pages
 
-type
-  CurlResult* = object
-    code*: int
-    body*: string
-
-proc request*(url: string, met: NodeRequest): CurlResult =
-  ##
+proc request*(url: string, met: NodeRequest): tuple[code: int, body: string] =
   var client = newHttpClient()
   case met:
   of nrGet:
     let res = client.get(url)
     var code: int
     discard parseInt(res.status, code, 0)
-    CurlResult(code: code, body: res.body)
+    (code, res.body)
   of nrHead:
     let res = client.head(url)
     var code: int
     discard parseInt(res.status, code, 0)
-    CurlResult(code: code, body: "")
+    (code, "")
 
 when isMainModule:
   when defined ssl:
